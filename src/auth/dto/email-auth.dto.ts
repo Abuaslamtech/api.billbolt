@@ -26,10 +26,12 @@ export class EmailSignupDto {
 }
 
 export class EmailLoginDto {
-  /** Firebase ID token obtained from signInWithEmailAndPassword on the client */
+  @IsEmail()
+  email: string;
+
   @IsString()
   @IsNotEmpty()
-  idToken: string;
+  password: string;
 }
 
 export class RefreshTokenDto {

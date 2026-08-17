@@ -10,7 +10,6 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { PrismaService } from 'prisma/prisma.service';
-import { admin } from 'src/firebase/firebase-admin';
 import { EmailLoginDto, EmailSignupDto, RefreshTokenDto } from './dto/email-auth.dto';
 import { GoogleAuthDto } from './dto/google-auth.dto';
 import { GoogleAuthService } from './google-auth.service';
@@ -50,11 +49,10 @@ export class AuthService {
     return d;
   }
 
-  /** Upsert a refresh token for the user — one active token per user (rotate on every login) */
+  /** Issue a single-session rotatable refresh token for the user */
   private async issueRefreshToken(userId: string): Promise<string> {
     const token = this.generateRefreshToken();
 
-    // Delete any existing refresh tokens for this user (single-session)
     await this.prisma.refreshToken.deleteMany({ where: { userId } });
 
     await this.prisma.refreshToken.create({
@@ -68,7 +66,7 @@ export class AuthService {
     return token;
   }
 
-  /** Build the full auth response from a User + Business record */
+  /** Build full auth response */
   private async buildAuthResponse(userId: string) {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
@@ -101,62 +99,70 @@ export class AuthService {
     };
   }
 
-  // ─── Google OAuth ───────────────────────────────────────────────────────────
+  // ─── Google OAuth (Scath Pattern — Zero Firebase Admin Required) ────────────
 
   async googleLogin(dto: GoogleAuthDto) {
+    // 1. Verify Google ID token cryptographically using google-auth-library
     const googleUser = await this.googleAuthService.verifyIdToken(dto.idToken);
 
-    // Upsert: create if new, just get if existing
+    // 2. Find or create user in PostgreSQL
     let user = await this.prisma.user.findUnique({
       where: { email: googleUser.email },
+      include: { business: true },
     });
 
     if (!user) {
-      // New Google user — also verify via Firebase Admin to get firebaseUid
-      const decoded = await admin.auth().verifyIdToken(dto.idToken);
-      user = await this.prisma.user.create({
-        data: {
-          firebaseUid: decoded.uid,
-          email: googleUser.email,
-          fullName: `${googleUser.firstName} ${googleUser.lastName}`.trim(),
-          avatarUrl: googleUser.avatarUrl,
-        },
+      // Create new user + default business entity in database
+      const fullName = `${googleUser.firstName} ${googleUser.lastName}`.trim() || 'Business Owner';
+      user = await this.prisma.$transaction(async (tx) => {
+        const newUser = await tx.user.create({
+          data: {
+            email: googleUser.email,
+            googleId: googleUser.googleId,
+            fullName,
+            avatarUrl: googleUser.avatarUrl,
+          },
+        });
+
+        const newBusiness = await tx.business.create({
+          data: {
+            name: `${fullName}'s Store`,
+            ownerId: newUser.id,
+          },
+        });
+
+        return { ...newUser, business: newBusiness };
       });
+
       this.logger.log(`New user created via Google OAuth: ${user.email}`);
+    } else if (!user.googleId) {
+      // Link Google ID if user previously registered with email
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          googleId: googleUser.googleId,
+          avatarUrl: user.avatarUrl || googleUser.avatarUrl,
+        },
+        include: { business: true },
+      });
     }
 
     return this.buildAuthResponse(user.id);
   }
 
-  // ─── Email Sign-Up ──────────────────────────────────────────────────────────
+  // ─── Email Sign-Up (Bcrypt Hashed in DB) ────────────────────────────────────
 
   async emailSignup(dto: EmailSignupDto) {
-    // Check for existing email
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const existing = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase().trim() } });
     if (existing) throw new ConflictException('An account with this email already exists');
 
-    // Create Firebase user
-    let firebaseUser: admin.auth.UserRecord;
-    try {
-      firebaseUser = await admin.auth().createUser({
-        email: dto.email,
-        password: dto.password,
-        displayName: dto.fullName,
-      });
-    } catch (err: any) {
-      if (err.code === 'auth/email-already-exists') {
-        throw new ConflictException('An account with this email already exists');
-      }
-      this.logger.error('Firebase user creation failed:', err);
-      throw new BadRequestException('Failed to create account. Please try again.');
-    }
+    const passwordHash = await bcrypt.hash(dto.password, 10);
 
-    // Create DB user + business in a transaction
     const result = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
-          firebaseUid: firebaseUser.uid,
-          email: dto.email,
+          email: dto.email.toLowerCase().trim(),
+          passwordHash,
           fullName: dto.fullName,
           phone: dto.phone,
         },
@@ -178,25 +184,30 @@ export class AuthService {
     return this.buildAuthResponse(result.user.id);
   }
 
-  // ─── Email Login ────────────────────────────────────────────────────────────
+  // ─── Email Login (Direct Password Verification) ────────────────────────────
 
   async emailLogin(dto: EmailLoginDto) {
-    // Client signs in via Firebase Auth and sends us the short-lived Firebase ID token
-    const decoded = await admin.auth().verifyIdToken(dto.idToken).catch(() => {
-      throw new UnauthorizedException('Invalid credentials');
-    });
-
     const user = await this.prisma.user.findUnique({
-      where: { firebaseUid: decoded.uid },
+      where: { email: dto.email.toLowerCase().trim() },
     });
 
-    if (!user) throw new UnauthorizedException('No account found. Please sign up.');
-    if (!user.isActive) throw new UnauthorizedException('Account is inactive. Contact support.');
+    if (!user || !user.passwordHash) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    const isMatch = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!isMatch) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException('Account is disabled. Contact support.');
+    }
 
     return this.buildAuthResponse(user.id);
   }
 
-  // ─── Refresh ────────────────────────────────────────────────────────────────
+  // ─── Refresh Token ──────────────────────────────────────────────────────────
 
   async refresh(dto: RefreshTokenDto) {
     const stored = await this.prisma.refreshToken.findUnique({
@@ -220,7 +231,7 @@ export class AuthService {
     return { message: 'Logged out successfully' };
   }
 
-  // ─── Get My Profile ─────────────────────────────────────────────────────────
+  // ─── Profile ────────────────────────────────────────────────────────────────
 
   async getMyProfile(userId: string) {
     return this.prisma.user.findUniqueOrThrow({

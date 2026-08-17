@@ -25,17 +25,19 @@ enum PaymentMethod {
 // ─── User & Auth ──────────────────────────────────────────────────────────────
 
 model User {
-  id          String   @id @default(cuid())
-  firebaseUid String   @unique
-  email       String   @unique
-  fullName    String?
-  phone       String?  @unique
-  avatarUrl   String?
-  role        UserRole @default(USER)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  credit      Int      @default(50)
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String?
+  googleId     String?   @unique
+  firebaseUid  String?   @unique
+  fullName     String?
+  phone        String?   @unique
+  avatarUrl    String?
+  role         UserRole  @default(USER)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  credit       Int       @default(50)
 
   business      Business?
   receipts      Receipt[]
