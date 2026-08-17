@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  USER
+  ADMIN
+  MANAGER
+}
+
+enum PaymentMethod {
+  Cash
+  Transfer
+  Card
+  Other
+}
+
+// ─── User & Auth ──────────────────────────────────────────────────────────────
+
+model User {
+  id          String   @id @default(cuid())
+  firebaseUid String   @unique
+  email       String   @unique
+  fullName    String?
+  phone       String?  @unique
+  avatarUrl   String?
+  role        UserRole @default(USER)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  credit      Int      @default(50)
+
+  business      Business?
+  receipts      Receipt[]
+  refreshTokens RefreshToken[]
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Business ─────────────────────────────────────────────────────────────────
+
+model Business {
+  id          String   @id @default(cuid())
+  name        String
+  type        String?
+  address     String?
+  phone       String?
+  email       String?
+  currency    String   @default("₦")
+  description String?
+  logoUrl     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ownerId String @unique
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  receipts Receipt[]
+  products Product[]
+  restocks Restock[]
+  sales    Sale[]
+}
+
+// ─── Receipts ─────────────────────────────────────────────────────────────────
+
+model Receipt {
+  id            String        @id @default(cuid())
+  receiptNumber String        @unique
+  customerName  String
+  customerPhone String?
+  subtotal      Float
+  total         Float
+  paymentMethod PaymentMethod @default(Cash)
+  soldBy        String        @default("Staff")
+  cycle         String
+  date          String
+  notes         String?
+  isDeleted     Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  ownerId    String
+  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  items ReceiptItem[]
+  sales Sale[]
+}
+
+model ReceiptItem {
+  id          String @id @default(cuid())
+  productId   String
+  productName String
+  quantity    Int    @default(1)
+  unitPrice   Float
+  total       Float
+
+  receiptId String
+  receipt   Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+}
+
+// ─── Inventory ────────────────────────────────────────────────────────────────
+
+model Product {
+  id           String   @id @default(cuid())
+  name         String
+  category     String?
+  costPrice    Float
+  sellingPrice Float
+  openingStock Int      @default(0)
+  reorderLevel Int      @default(5)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  sales    Sale[]
+  restocks Restock[]
+}
+
+model Restock {
+  id          String   @id @default(cuid())
+  date        String
+  cycle       String
+  qty         Int
+  costPerUnit Float
+  totalCost   Float
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  productId   String
+  productName String
+  product     Product  @relation(fields: [productId], references: [id])
+}
+
+// ─── Sales ────────────────────────────────────────────────────────────────────
+
+model Sale {
+  id           String   @id @default(cuid())
+  date         String
+  cycle        String
+  qty          Int
+  soldBy       String   @default("Staff")
+  unitPrice    Float
+  unitCost     Float
+  revenue      Float
+  cost         Float
+  profit       Float
+  customerName String?
+  createdAt    DateTime @default(now())
+
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  productId   String
+  productName String
+  product     Product  @relation(fields: [productId], references: [id])
+  receiptId   String?
+  receipt     Receipt? @relation(fields: [receiptId], references: [id])
+}

@@ -1,0 +1,52 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Req,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+} from '@nestjs/common';
+import { BusinessService } from './business.service';
+import { CreateBusinessDto } from './dto/create-business.dto';
+import { UpdateBusinessDto } from './dto/update-business.dto';
+import { FirebaseAuthGuard } from 'src/firebase/firebase-auth.guard';
+
+@Controller('business')
+export class BusinessController {
+  constructor(private readonly businessService: BusinessService) {}
+
+  @UseGuards(FirebaseAuthGuard)
+  @Post()
+  create(@Body() createBusinessDto: CreateBusinessDto, @Req() req: Request) {
+    console.log('User from request:', req['user']); //
+    const ownerId = req['user'].uid;
+      console.log('Owner ID:', ownerId); 
+    return this.businessService.create(createBusinessDto, ownerId);
+  }
+
+  @Get()
+  findAll() {
+    return this.businessService.findAll();
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.businessService.findOne(+id);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @Body() updateBusinessDto: UpdateBusinessDto,
+  ) {
+    return this.businessService.update(+id, updateBusinessDto);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.businessService.remove(+id);
+  }
+}
