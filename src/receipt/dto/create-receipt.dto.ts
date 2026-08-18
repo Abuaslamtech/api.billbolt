@@ -41,4 +41,8 @@ export class CreateReceiptDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  date?: string;
 }

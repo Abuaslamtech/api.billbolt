@@ -30,9 +30,10 @@ export class ReceiptService {
       where: { businessId },
     });
 
-    const now = new Date();
-    const dateStr = now.toISOString().split('T')[0];
-    const cycle = cycleKey(now);
+    const recordDate = dto.date ? new Date(dto.date) : new Date();
+    const finalDate = isNaN(recordDate.getTime()) ? new Date() : recordDate;
+    const dateStr = finalDate.toISOString().split('T')[0];
+    const cycle = cycleKey(finalDate);
     const soldBy = dto.soldBy ?? 'Staff';
 
     const receiptItems: Array<{
@@ -57,6 +58,7 @@ export class ReceiptService {
       cost: number;
       profit: number;
       customerName: string;
+      createdAt: Date;
     }> = [];
 
     let subtotal = 0;
@@ -91,6 +93,7 @@ export class ReceiptService {
         cost: lineCost,
         profit: lineTotal - lineCost,
         customerName: dto.customerName,
+        createdAt: finalDate,
       });
     }
 
@@ -107,6 +110,7 @@ export class ReceiptService {
           soldBy,
           cycle,
           date: dateStr,
+          createdAt: finalDate,
           notes: dto.notes,
           ownerId,
           businessId,
