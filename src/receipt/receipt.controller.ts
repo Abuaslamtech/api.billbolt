@@ -1,38 +1,65 @@
 import {
-  Body, Controller, Delete, Get, Param, Post, Query, UseGuards
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard } from 'src/auth/guards/jwt.guard';
 import { GetUser } from 'src/auth/decorators/get-user.decorator';
+import { JwtAuthGuard } from 'src/auth/guards/jwt.guard';
 import { JwtPayload } from 'src/auth/strategies/jwt.strategy';
+import { PrismaService } from 'prisma/prisma.service';
 import { CreateReceiptDto } from './dto/create-receipt.dto';
 import { ReceiptService } from './receipt.service';
 
 @UseGuards(JwtAuthGuard)
 @Controller('receipts')
 export class ReceiptController {
-  constructor(private readonly receiptService: ReceiptService) {}
+  constructor(
+    private readonly receiptService: ReceiptService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  private async resolveBusinessId(user: JwtPayload): Promise<string> {
+    if (user.businessId) return user.businessId;
+    const b = await this.prisma.business.findUnique({ where: { ownerId: user.sub } });
+    return b?.id ?? '';
+  }
 
   @Post()
-  createReceipt(@GetUser() user: JwtPayload, @Body() dto: CreateReceiptDto) {
-    return this.receiptService.createReceipt(dto, user.sub, user.businessId);
+  async createReceipt(@GetUser() user: JwtPayload, @Body() dto: CreateReceiptDto) {
+    const businessId = await this.resolveBusinessId(user);
+    return this.receiptService.createReceipt(dto, user.sub, businessId);
   }
 
   @Get()
-  getReceipts(
+  async getReceipts(
     @GetUser() user: JwtPayload,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
   ) {
-    return this.receiptService.getReceipts(user.businessId, +page, +limit);
+    const businessId = await this.resolveBusinessId(user);
+    return this.receiptService.getReceipts(businessId, +page, +limit);
+  }
+
+  @Get('sales')
+  async getSales(@GetUser() user: JwtPayload) {
+    const businessId = await this.resolveBusinessId(user);
+    return this.receiptService.getSales(businessId);
   }
 
   @Get(':id')
-  getReceipt(@GetUser() user: JwtPayload, @Param('id') id: string) {
-    return this.receiptService.getReceiptById(id, user.businessId);
+  async getReceipt(@GetUser() user: JwtPayload, @Param('id') id: string) {
+    const businessId = await this.resolveBusinessId(user);
+    return this.receiptService.getReceiptById(id, businessId);
   }
 
   @Delete(':id')
-  deleteReceipt(@GetUser() user: JwtPayload, @Param('id') id: string) {
-    return this.receiptService.softDeleteReceipt(id, user.businessId);
+  async deleteReceipt(@GetUser() user: JwtPayload, @Param('id') id: string) {
+    const businessId = await this.resolveBusinessId(user);
+    return this.receiptService.softDeleteReceipt(id, businessId);
   }
 }

@@ -3,15 +3,23 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import * as crypto from 'crypto';
+import { PrismaService } from 'prisma/prisma.service';
+import { JwtPayload } from 'src/auth/strategies/jwt.strategy';
 import { CreateBusinessDto } from './dto/create-business.dto';
 import { UpdateBusinessDto } from './dto/update-business.dto';
-import { PrismaService } from 'prisma/prisma.service';
 
 @Injectable()
 export class BusinessService {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+  ) {}
 
-  /** Create business for authenticated user */
+  /** Create business for authenticated user and return fresh tokens with businessId */
   async create(data: CreateBusinessDto, userId: string) {
     const user = await this.prismaService.user.findUnique({
       where: { id: userId },
@@ -46,16 +54,53 @@ export class BusinessService {
       });
     }
 
-    const updatedUser = await this.prismaService.user.findUnique({
+    const updatedUser = await this.prismaService.user.findUniqueOrThrow({
       where: { id: user.id },
       include: { business: true },
+    });
+
+    // Generate fresh JWT token containing the new businessId
+    const payload: JwtPayload = {
+      sub: updatedUser.id,
+      email: updatedUser.email,
+      businessId: newBusiness.id,
+      role: updatedUser.role,
+    };
+
+    const accessToken = this.jwtService.sign(payload, {
+      secret: this.configService.getOrThrow('JWT_SECRET'),
+      expiresIn: '15m',
+    });
+
+    const refreshToken = crypto.randomBytes(64).toString('hex');
+    const expiry = new Date();
+    expiry.setDate(expiry.getDate() + 30);
+
+    await this.prismaService.refreshToken.deleteMany({ where: { userId } });
+    await this.prismaService.refreshToken.create({
+      data: {
+        userId,
+        token: refreshToken,
+        expiresAt: expiry,
+      },
     });
 
     return {
       success: true,
       message: 'Business created successfully',
+      accessToken,
+      refreshToken,
       business: newBusiness,
-      user: updatedUser,
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        fullName: updatedUser.fullName,
+        phone: updatedUser.phone,
+        avatarUrl: updatedUser.avatarUrl,
+        role: updatedUser.role,
+        credit: updatedUser.credit,
+        business: updatedUser.business,
+      },
     };
   }
 

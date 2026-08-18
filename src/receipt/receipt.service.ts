@@ -128,7 +128,16 @@ export class ReceiptService {
     return receipt;
   }
 
+  async getSales(businessId: string) {
+    if (!businessId) return [];
+    return this.prisma.sale.findMany({
+      where: { businessId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async getReceipts(businessId: string, page = 1, limit = 20) {
+    if (!businessId) return { receipts: [], total: 0, page, limit };
     const skip = (page - 1) * limit;
     const [receipts, total] = await Promise.all([
       this.prisma.receipt.findMany({
