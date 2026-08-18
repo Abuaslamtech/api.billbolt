@@ -86,6 +86,7 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
+      needsBusinessSetup: !user.business,
       user: {
         id: user.id,
         email: user.email,
@@ -112,29 +113,19 @@ export class AuthService {
     });
 
     if (!user) {
-      // Create new user + default business entity in database
+      // Create new user without business — user will be prompted to set up their store
       const fullName = `${googleUser.firstName} ${googleUser.lastName}`.trim() || 'Business Owner';
-      user = await this.prisma.$transaction(async (tx) => {
-        const newUser = await tx.user.create({
-          data: {
-            email: googleUser.email,
-            googleId: googleUser.googleId,
-            fullName,
-            avatarUrl: googleUser.avatarUrl,
-          },
-        });
-
-        const newBusiness = await tx.business.create({
-          data: {
-            name: `${fullName}'s Store`,
-            ownerId: newUser.id,
-          },
-        });
-
-        return { ...newUser, business: newBusiness };
+      user = await this.prisma.user.create({
+        data: {
+          email: googleUser.email,
+          googleId: googleUser.googleId,
+          fullName,
+          avatarUrl: googleUser.avatarUrl,
+        },
+        include: { business: true },
       });
 
-      this.logger.log(`New user created via Google OAuth: ${user.email}`);
+      this.logger.log(`New user registered via Google OAuth: ${user.email}`);
     } else if (!user.googleId) {
       // Link Google ID if user previously registered with email
       user = await this.prisma.user.update({

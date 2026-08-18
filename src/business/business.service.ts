@@ -9,41 +9,45 @@ import { PrismaService } from 'prisma/prisma.service';
 
 @Injectable()
 export class BusinessService {
-  constructor(private prismaService: PrismaService) {}
+  constructor(private readonly prismaService: PrismaService) {}
 
-  // create business
-  async create(data: CreateBusinessDto, firebaseUid: string) {
-    // find user by firebase ID
+  /** Create business for authenticated user */
+  async create(data: CreateBusinessDto, userId: string) {
     const user = await this.prismaService.user.findUnique({
-      where: { firebaseUid },
-      include: {
-        business: true,
-      },
+      where: { id: userId },
+      include: { business: true },
     });
 
-    // Check if user exist
     if (!user) {
-      throw new NotFoundException(
-        'User not found. Please ensure user is registered!',
-      );
+      throw new NotFoundException('User not found');
     }
 
-    // Check if user already has a business
     if (user.business) {
-      throw new ConflictException('User already has a business registered');
+      throw new ConflictException('User already has a registered business');
     }
 
-    // Create the business
     const newBusiness = await this.prismaService.business.create({
       data: {
-        ...data,
+        name: data.name,
+        type: data.type,
+        address: data.address,
+        phone: data.phone || user.phone,
+        email: data.email || user.email,
+        currency: data.currency || 'NGN',
         ownerId: user.id,
       },
     });
 
-    // Return updated user with business
+    // Update user phone if provided
+    if (data.phone && !user.phone) {
+      await this.prismaService.user.update({
+        where: { id: user.id },
+        data: { phone: data.phone },
+      });
+    }
+
     const updatedUser = await this.prismaService.user.findUnique({
-      where: { firebaseUid },
+      where: { id: user.id },
       include: { business: true },
     });
 
@@ -51,24 +55,52 @@ export class BusinessService {
       success: true,
       message: 'Business created successfully',
       business: newBusiness,
-      user: updatedUser, // Include complete user data
+      user: updatedUser,
     };
   }
 
-  async findAll() {
-    const business = await this.prismaService.business.findMany();
+  /** Get authenticated user's business */
+  async getMyBusiness(userId: string) {
+    const business = await this.prismaService.business.findUnique({
+      where: { ownerId: userId },
+    });
+
+    if (!business) {
+      throw new NotFoundException('No business found for this user');
+    }
+
     return business;
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} business`;
+  /** Update authenticated user's business */
+  async updateMyBusiness(userId: string, updateBusinessDto: UpdateBusinessDto) {
+    const business = await this.prismaService.business.findUnique({
+      where: { ownerId: userId },
+    });
+
+    if (!business) {
+      throw new NotFoundException('No business found for this user');
+    }
+
+    return this.prismaService.business.update({
+      where: { id: business.id },
+      data: updateBusinessDto,
+    });
   }
 
-  update(id: number, updateBusinessDto: UpdateBusinessDto) {
-    return `This action updates a #${id} business`;
+  async findAll() {
+    return this.prismaService.business.findMany();
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} business`;
+  async findOne(id: string) {
+    return this.prismaService.business.findUnique({
+      where: { id },
+    });
+  }
+
+  async remove(id: string) {
+    return this.prismaService.business.delete({
+      where: { id },
+    });
   }
 }
