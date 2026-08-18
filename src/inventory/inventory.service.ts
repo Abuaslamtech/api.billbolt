@@ -58,6 +58,9 @@ export class InventoryService {
   }
 
   async createProduct(businessId: string, dto: CreateProductDto) {
+    if (!businessId) {
+      throw new BadRequestException('User does not have an active business registered. Please complete store setup.');
+    }
     return this.prisma.product.create({
       data: { ...dto, businessId },
     });
