@@ -1,9 +1,14 @@
-import { ValidationPipe } from '@nestjs/common';
+import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Global API v1 Prefix (keeps root '/' as a public health check)
+  app.setGlobalPrefix('api/v1', {
+    exclude: [{ path: '', method: RequestMethod.GET }],
+  });
 
   // Global validation — strips unknown fields, transforms types
   app.useGlobalPipes(
@@ -24,6 +29,7 @@ async function bootstrap() {
   const port = process.env.PORT ?? 3000;
   await app.listen(port, '0.0.0.0');
   console.log(`🚀 Billbolt API running on http://0.0.0.0:${port}`);
+  console.log(`📡 Base API URL: http://0.0.0.0:${port}/api/v1`);
 }
 
 bootstrap();
