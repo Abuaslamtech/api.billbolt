@@ -16,8 +16,8 @@ import { GoogleAuthService } from './google-auth.service';
 import { JwtPayload } from './strategies/jwt.strategy';
 
 const REFRESH_TOKEN_BYTES = 64;
-const REFRESH_TOKEN_EXPIRES_DAYS = 30;
-const ACCESS_TOKEN_EXPIRES = '15m';
+const REFRESH_TOKEN_EXPIRES_DAYS = 90;
+const ACCESS_TOKEN_EXPIRES = '30d';
 
 @Injectable()
 export class AuthService {
