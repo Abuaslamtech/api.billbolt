@@ -97,6 +97,9 @@ export class ReceiptService {
       });
     }
 
+    const discount = Math.max(0, Number(dto.discount) || 0);
+    const finalTotal = Math.max(0, subtotal - discount);
+
     // Create receipt + items + sales in a single transaction
     const receipt = await this.prisma.$transaction(async (tx) => {
       const receipt = await tx.receipt.create({
@@ -105,7 +108,8 @@ export class ReceiptService {
           customerName: dto.customerName,
           customerPhone: dto.customerPhone,
           subtotal,
-          total: subtotal,
+          discount,
+          total: finalTotal,
           paymentMethod: (dto.paymentMethod ?? 'Cash') as any,
           soldBy,
           cycle,

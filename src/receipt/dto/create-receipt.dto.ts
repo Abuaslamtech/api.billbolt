@@ -45,4 +45,8 @@ export class CreateReceiptDto {
   @IsOptional()
   @IsString()
   date?: string;
+
+  @IsOptional()
+  @IsNumber()
+  discount?: number;
 }

@@ -86,6 +86,7 @@ model Receipt {
   customerName  String
   customerPhone String?
   subtotal      Float
+  discount      Float         @default(0)
   total         Float
   paymentMethod PaymentMethod @default(Cash)
   soldBy        String        @default("Staff")
