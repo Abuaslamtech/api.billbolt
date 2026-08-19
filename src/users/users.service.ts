@@ -23,13 +23,20 @@ export class UsersService {
 
   // create new user with business
   async create(dto: CreateUserDto, firebaseUid: string) {
-    const { email, fullName, phone, business } = dto;
+    const email = dto.email.toLowerCase().trim();
+    const phone = dto.phone?.trim() ? dto.phone.trim() : null;
+    const { fullName, business } = dto;
 
     try {
       // Check if user already exists in DB
+      const orConditions: any[] = [{ email }, { firebaseUid }];
+      if (phone) {
+        orConditions.push({ phone });
+      }
+
       const userExists = await this.prismaService.user.findFirst({
         where: {
-          OR: [{ email }, { phone }, { firebaseUid }],
+          OR: orConditions,
         },
       });
 

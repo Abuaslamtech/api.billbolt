@@ -144,26 +144,34 @@ export class AuthService {
   // ─── Email Sign-Up (Bcrypt Hashed in DB) ────────────────────────────────────
 
   async emailSignup(dto: EmailSignupDto) {
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase().trim() } });
+    const email = dto.email.toLowerCase().trim();
+    const phone = dto.phone?.trim() ? dto.phone.trim() : null;
+
+    const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) throw new ConflictException('An account with this email already exists');
+
+    if (phone) {
+      const existingPhone = await this.prisma.user.findUnique({ where: { phone } });
+      if (existingPhone) throw new ConflictException('An account with this phone number already exists');
+    }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
     const result = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
-          email: dto.email.toLowerCase().trim(),
+          email,
           passwordHash,
-          fullName: dto.fullName,
-          phone: dto.phone,
+          fullName: dto.fullName?.trim(),
+          phone,
         },
       });
 
       const business = await tx.business.create({
         data: {
-          name: dto.businessName,
-          type: dto.businessType,
-          phone: dto.phone,
+          name: dto.businessName.trim(),
+          type: dto.businessType?.trim() || null,
+          phone,
           ownerId: user.id,
         },
       });

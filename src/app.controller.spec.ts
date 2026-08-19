@@ -16,7 +16,9 @@ describe('AppController', () => {
 
   describe('root', () => {
     it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+      const res = appController.getHealth();
+      expect(res.status).toBe('ok');
+      expect(res.service).toBe('Billbolt API');
     });
   });
 });
